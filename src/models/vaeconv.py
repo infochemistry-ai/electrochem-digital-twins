@@ -25,10 +25,10 @@ class VAE_CONV(nn.Module):
             dummy = torch.zeros(1, in_channels, seq_len)
             enc_out = self.encoder(dummy)
         self.enc_out_channels = enc_out.size(1)
-        self.enc_out_len      = enc_out.size(2)
-        self.flatten_dim      = self.enc_out_channels * self.enc_out_len
+        self.enc_out_len = enc_out.size(2)
+        self.flatten_dim  = self.enc_out_channels * self.enc_out_len
 
-        self.fc_mu     = nn.Linear(self.flatten_dim, latent_dim)
+        self.fc_mu = nn.Linear(self.flatten_dim, latent_dim)
         self.fc_logvar = nn.Linear(self.flatten_dim, latent_dim)
 
         self.decoder_input = nn.Sequential(
@@ -93,7 +93,6 @@ class VAE_CONV(nn.Module):
 
 
 def vae_loss(recon_x: torch.Tensor, x: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor, beta: float = 1.0):
-    """Базовая β-VAE потеря (MSE + β * KL)."""
     x = x.unsqueeze(1)
     recon_loss = F.l1_loss(recon_x, x, reduction='sum')
     kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())

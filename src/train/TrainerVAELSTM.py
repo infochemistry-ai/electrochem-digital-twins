@@ -61,15 +61,13 @@ class Trainer:
 
             train_loss += loss.item()
 
-            # --- здесь правим сбор метрик ---
-            vah_np = vah.detach().cpu().numpy()          # (B, seq_len)
-            pred_np = vah_hat.detach().cpu().numpy()     # (B, seq_len, 1) или (B, seq_len)
+            vah_np = vah.detach().cpu().numpy()
+            pred_np = vah_hat.detach().cpu().numpy()
             if pred_np.ndim == 3:
-                pred_np = pred_np.squeeze(-1)            # → (B, seq_len)
+                pred_np = pred_np.squeeze(-1)
 
-            # расплющиваем сразу в одномерный список:
-            train_true_vah.extend(vah_np.flatten().tolist())
-            train_predicted_vah.extend(pred_np.flatten().tolist())
+        train_true_vah.extend(np.transpose(vah_np[0]))
+        train_predicted_vah.extend(np.transpose(pred_np[0]))
 
         train_loss /= len(self.train_loader.dataset)
         return train_true_vah, train_predicted_vah, train_loss
@@ -92,8 +90,8 @@ class Trainer:
                 if pred_np.ndim == 3:
                     pred_np = pred_np.squeeze(-1)
 
-                val_true_vah.extend(vah_np.flatten().tolist())
-                val_predicted_vah.extend(pred_np.flatten().tolist())
+        val_true_vah.extend(np.transpose(vah_np[0]))
+        val_predicted_vah.extend(np.transpose(pred_np[0]))
 
         val_loss /= len(self.val_loader.dataset)
         return val_true_vah, val_predicted_vah, val_loss
