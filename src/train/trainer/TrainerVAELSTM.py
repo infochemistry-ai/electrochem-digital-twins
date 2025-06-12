@@ -1,8 +1,9 @@
+from pathlib import Path
 import random
 import torch
 import numpy as np
 import pandas as pd
-from src.data.plots import plot_models
+from src.utils.plots import plot_models
 
 def set_seed(seed: int = 42):
     random.seed(seed)
@@ -117,7 +118,7 @@ class Trainer:
             
                 plot_models(
                     epoch,
-                    self.path_to_save_plots + f"epoch_{epoch}.png",
+                    Path(self.path_to_save_plots)/f"epoch_{epoch}.png",
                     train_true_cva, 
                     train_pred_cva, 
                     val_true_cva, 

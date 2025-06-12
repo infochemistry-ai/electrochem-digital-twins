@@ -11,18 +11,9 @@ git clone git@github.com:infochemistry-ai/electrochem-digital-twins.git
 ```
 <p>2. Create a virtual environment and install the necessary libraries </p>
 
-- For Linux/MacOS system:
   ```bash
-  python3 -m venv venv
-  source venv/bin/activate
-  pip install -r requirements.txt
-  ```
-
-- For Windows system
-  ```bash
-  python -m venv venv
-  .\venv\Scripts\activate
-  pip install -r requirements.txt
+  uv sync
+  source .venv/bin/activate
   ```
 
 <p>3. Download data from S3 bucket</p>
