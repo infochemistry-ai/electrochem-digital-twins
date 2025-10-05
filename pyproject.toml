@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "electrochem-digital-twins"
 version = "0.1.0"
@@ -6,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13.3"
 dependencies = [
     "boto3>=1.38.35",
+    "dotenv>=0.9.9",
     "dtaidistance>=2.3.13",
     "ipykernel>=6.29.5",
     "matplotlib>=3.10.3",
@@ -20,3 +25,19 @@ dependencies = [
     "torchvision>=0.22.1",
     "tqdm>=4.67.1",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

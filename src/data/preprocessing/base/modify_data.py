@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import pywt
-from src.data.preprocessing.base.base_data import BaseData
+from data.preprocessing.base.base_data import BaseData
 
 class ModifyData(BaseData):
     def __init__(self, num_cycle, inhibitor_name, split):

@@ -2,12 +2,12 @@ import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from src.models.ganconv import *
-from src.train.trainer.TrainerGAN import Trainer
-from src.data.preprocessing.pipeline import Pipeline
-from src.data.datasets.universal_dataset import CVADataset
-from src.data.preprocessing.splitter import select_test_inh
-from src.utils.paths import get_project_path
+from models.ganconv import *
+from train.trainer.TrainerGAN import Trainer
+from data.preprocessing.pipeline import Pipeline
+from data.datasets.universal_dataset import CVADataset
+from data.preprocessing.splitter import select_test_inh
+from utils.paths import get_project_path
 
 
 def load_data(drop_inhib: str):

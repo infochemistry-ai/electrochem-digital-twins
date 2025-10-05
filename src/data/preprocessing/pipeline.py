@@ -2,9 +2,9 @@ import os
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from src.data.preprocessing.base.modify_data import ModifyData
-from src.data.preprocessing.extractor.extractor import Extractor
-from src.utils.paths import get_project_path
+from data.preprocessing.base.modify_data import ModifyData
+from data.preprocessing.extractor.extractor import Extractor
+from utils.paths import get_project_path
 
 class Pipeline:
     def __init__(self, num_cycle, inhibitor_name, split, norm_feat=False):

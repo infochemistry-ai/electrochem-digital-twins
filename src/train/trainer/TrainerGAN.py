@@ -3,7 +3,7 @@ import random
 import torch
 import numpy as np
 import pandas as pd
-from src.utils.plots import plot_models_gan
+from utils.plots import plot_models_gan
 
 def set_seed(seed: int = 42):
     random.seed(seed)

@@ -3,7 +3,7 @@ import pywt
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from src.utils.paths import get_project_path
+from utils.paths import get_project_path
 
 class BaseData:
     def __init__(self, num_cycle, inhibitor_name, split):
@@ -68,8 +68,8 @@ class BaseData:
                     current.append(current_temp)
                     voltage.append(volt_temp)
 
-                    conc.append(int(file.strip().split('/')[-2].split()[0]))
-                    inh.append(file.strip().split('/')[-3].split()[0])
+                    conc.append(int(file.strip().split(os.sep)[-2].split()[0]))
+                    inh.append(file.strip().split(os.sep)[-3].split()[0])
 
                     current_temp, volt_temp = [], []
 

@@ -2,8 +2,9 @@ from pathlib import Path
 import random
 import torch
 import numpy as np
+import os
 import pandas as pd
-from src.utils.plots import plot_models
+from utils.plots import plot_models
 
 def set_seed(seed: int = 42):
     random.seed(seed)
@@ -44,6 +45,9 @@ class Trainer:
         self.path_to_save_tables = path_to_save_tables
         
         set_seed(seed=seed)
+        os.makedirs(self.path_to_save_plots, exist_ok=True)
+        os.makedirs(self.path_to_save_models, exist_ok=True)
+        os.makedirs(self.path_to_save_tables, exist_ok=True)
         
         
     def train_step(self):
@@ -131,7 +135,7 @@ class Trainer:
             
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                torch.save(self.model.state_dict(), self.path_to_save_models)
+                torch.save(self.model.state_dict(), os.path.join(self.path_to_save_models, "best_model.pt"))
                 
             print(f"Epoch {epoch:03d} — Train: {train_loss:.4f}, Val: {val_loss:.4f}")
         
