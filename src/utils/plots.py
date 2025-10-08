@@ -81,30 +81,30 @@ def plot_models(
     train_loss, 
     val_loss
     ):
-        
-        fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(14, 10))
 
-        axs[0, 0].plot(train_true_cva, "r",)
-        axs[0, 0].set_title("Train results for epoch {}".format(epoch))
-        axs[0, 0].scatter(range(len(train_pred_cva)), train_pred_cva, s=1.5)
-        axs[0, 0].set_xlabel("True values")
-        axs[0, 0].set_ylabel("Predicted values")
+    fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(14, 10))
 
-        axs[0, 1].plot(val_true_cva,"r",)
-        axs[0, 1].set_title("Test results for epoch {}".format(epoch))
-        axs[0, 1].scatter( range(len(val_pred_cva)), val_pred_cva, s=1.5)
-        axs[0, 1].set_xlabel("True values")
-        axs[0, 1].set_ylabel("Predicted values")
+    axs[0, 0].plot(train_true_cva, "r")
+    axs[0, 0].set_title(f"Train results for epoch {epoch}")
+    axs[0, 0].scatter(range(len(train_pred_cva)), train_pred_cva, s=1.5)
+    axs[0, 0].set_xlabel("True values")
+    axs[0, 0].set_ylabel("Predicted values")
 
-        axs[1, 0].plot(train_loss, label="Train loss")
-        axs[1, 0].plot(val_loss, label="Test loss")
-        axs[1, 0].set_ylabel("EBLOSS Loss")
-        axs[1, 0].set_xlabel("Epochs")
-        axs[1, 0].legend()
+    axs[0, 1].plot(val_true_cva, "r")
+    axs[0, 1].set_title(f"Test results for epoch {epoch}")
+    axs[0, 1].scatter(range(len(val_pred_cva)), val_pred_cva, s=1.5)
+    axs[0, 1].set_xlabel("True values")
+    axs[0, 1].set_ylabel("Predicted values")
 
-        plt.tight_layout()
-        plt.savefig(path_to_save)
-        plt.close(fig)
+    axs[1, 0].plot(train_loss, label="Train loss")
+    axs[1, 0].plot(val_loss, label="Test loss")
+    axs[1, 0].set_ylabel("EBLOSS Loss")
+    axs[1, 0].set_xlabel("Epochs")
+    axs[1, 0].legend()
+
+    plt.tight_layout()
+    plt.savefig(path_to_save)
+    plt.close(fig)
         
         
 def plot_models_gan(

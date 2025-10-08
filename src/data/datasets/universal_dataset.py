@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset
+import numpy as np
 
 descriptors_name = ['MolWt', 'MolLogP', 'NumRotatableBonds', 'TPSA',
        'FractionCSP3', 'NumAromaticRings', 'Chi0', 'Chi1', 'Kappa1', 'Kappa2',
@@ -12,13 +13,26 @@ descriptors_name = ['MolWt', 'MolLogP', 'NumRotatableBonds', 'TPSA',
        'Vibrational entropy Eh', 'Rotational entropy Eh',
        'Translational entropy Eh', 'ppm']
 
+
 class CVADataset(Dataset):
-    def __init__(self, current):
+    def __init__(self, current, normalize=False):
         if "Inhibitor" in current.columns:
             current = current.drop(columns=["Inhibitor"])
-            
-        self.vah = current.drop(columns=current.columns[968:]).astype("float32").values
+
+        self.vah = current.iloc[:, :968].astype("float32").values
         self.desc = current[descriptors_name].astype("float32").values
+
+        self.normalize = normalize
+
+        if self.normalize:
+            self.mean = self.vah.mean()
+            self.std = self.vah.std()
+
+            # == Нормализация ==
+            self.vah = (self.vah - self.mean) / self.std
+        else:
+            self.mean = 0.0
+            self.std = 1.0
 
         self.vahh = torch.tensor(self.vah, dtype=torch.float32)
         self.descc = torch.tensor(self.desc, dtype=torch.float32)
@@ -31,3 +45,7 @@ class CVADataset(Dataset):
             "vah": self.vahh[idx],
             "features": self.descc[idx]
         }
+
+    def denormalize(self, tensor):
+        """Позволяет денормализовать выход модели (напр., для графиков)"""
+        return tensor * self.std + self.mean
