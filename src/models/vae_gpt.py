@@ -1,86 +1,96 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-class ConditionalAutoregressiveTransformer(nn.Module):
+
+class VAE_GPT(nn.Module):
     def __init__(
         self,
-        seq_len: int = 968,
-        feature_dim: int = 41,
-        d_model: int = 16,
-        nhead: int = 2,
-        num_layers: int = 1,
-        dim_feedforward: int = 64,
-        dropout: float = 0.25
+        cond_dim=42,
+        seq_len=968,
+        d_model=32,
+        nhead=2,
+        num_layers=1,
+        dropout=0.1
     ):
         super().__init__()
         self.seq_len = seq_len
         self.d_model = d_model
 
-        # Эмбеддинг для скалярного значения временного ряда
-        self.value_emb = nn.Linear(1, d_model)
+        # === 1. Условный токен ===
+        self.cond_proj = nn.Sequential(
+            nn.Linear(cond_dim, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model)
+        )
 
-        # Эмбеддинг условия (features)
-        self.cond_emb = nn.Linear(feature_dim, d_model)
+        # === 2. Learnable embeddings для временных позиций (y_0 ... y_{T-1}) ===
+        self.y_emb = nn.Parameter(torch.randn(seq_len, d_model) * 0.01)
 
-        # Обучаемые позиционные эмбеддинги
-        self.pos_emb = nn.Embedding(seq_len, d_model)
+        # === 3. Позиционное кодирование
+        self.pos_emb = nn.Parameter(torch.randn(seq_len + 1, d_model) * 0.01)
 
-        # Transformer decoder (на самом деле encoder с causal mask = decoder-only)
-        self.layers = nn.ModuleList([
-            nn.TransformerEncoderLayer(
-                d_model=d_model,
-                nhead=nhead,
-                dim_feedforward=dim_feedforward,
-                dropout=dropout,
-                batch_first=True,
-                norm_first=True  # стабильнее при обучении
-            ) for _ in range(num_layers)
-        ])
+        # === 4. Transformer decoder ===
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=d_model * 4,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=True  # чуть более стабильная схема
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.norm = nn.LayerNorm(d_model)  # дополнительная нормализация
 
-        # Выходной слой: d_model → 1 (скаляр)
+        # === 5. Выходной слой ===
         self.output_proj = nn.Linear(d_model, 1)
 
-        self._init_weights()
+        # === 6. Маска ===
+        self.register_buffer("causal_mask", self._generate_causal_mask(seq_len + 1))
 
-    def _init_weights(self):
-        # Хорошая практика для Transformer
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def forward(self, x: torch.Tensor, features: torch.Tensor):
+    def _generate_causal_mask(self, T):
         """
-        Args:
-            x: (B, L) — частично сгенерированный временной ряд (L <= seq_len)
-            features: (B, feature_dim) — условие
-        Returns:
-            logits: (B, L, 1) — предсказания для каждого шага
+        float маска размером (T, T), где:
+        - COND токен (0) доступен всем
+        - y_i видит только y_j, j <= i и COND
         """
-        B, L = x.shape
-        assert L <= self.seq_len, f"Input length {L} > max {self.seq_len}"
+        mask = torch.full((T, T), float('-inf'))
+        mask = torch.triu(mask, diagonal=1)  # обычная causal mask: запрещаем j > i
+        mask[:, 0] = 0  # разрешаем всем видеть COND (0-й токен)
+        return mask  # shape [T, T]
 
-        # Эмбеддинг значений
-        x = x.unsqueeze(-1)  # (B, L, 1)
-        x_emb = self.value_emb(x)  # (B, L, d_model)
+    def forward(self, c):
+        """
+        c: [B, cond_dim]
+        output: [B, seq_len]
+        """
+        B = c.size(0)
 
-        # Позиционные эмбеддинги
-        pos_ids = torch.arange(L, device=x.device).unsqueeze(0).expand(B, -1)  # (B, L)
-        pos_emb = self.pos_emb(pos_ids)  # (B, L, d_model)
+        # 1. Embed cond
+        cond_emb = self.cond_proj(c)  # [B, d_model]
 
-        # Условие: повторяем для каждого шага
-        cond_emb = self.cond_emb(features).unsqueeze(1)  # (B, 1, d_model)
-        cond_emb = cond_emb.expand(-1, L, -1)  # (B, L, d_model)
+        # 2. Learnable y embeddings
+        y_emb = self.y_emb.unsqueeze(0).expand(B, -1, -1)  # [B, seq_len, d_model]
 
-        # Суммируем всё
-        emb = x_emb + pos_emb + cond_emb  # (B, L, d_model)
+        # 3. Full input sequence: [COND, y_0, ..., y_T-1]
+        x = torch.cat([cond_emb.unsqueeze(1), y_emb], dim=1)  # [B, seq_len+1, d_model]
 
-        # Causal mask (чтобы не видеть будущее)
-        mask = torch.triu(torch.ones(L, L, device=x.device), diagonal=1).bool()
+        # 4. Positional embeddings
+        x = x + self.pos_emb.unsqueeze(0)  # [B, seq_len+1, d_model]
 
-        # Проход через слои
-        for layer in self.layers:
-            emb = layer(emb, src_mask=mask)
+        # 5. Transformer
+        x = self.transformer(x, mask=self.causal_mask)  # [B, seq_len+1, d_model]
+        x = self.norm(x)  # [B, seq_len+1, d_model]
 
-        # Выход
-        out = self.output_proj(emb)  # (B, L, 1)
-        return out.squeeze(-1)  # (B, L)
+        # 6. Discard COND token
+        x = x[:, 1:, :]  # [B, seq_len, d_model]
+
+        # 7. Output projection
+        out = self.output_proj(x).squeeze(-1)  # [B, seq_len]
+
+        return out
+
+
+def vae_loss(recon_x: torch.Tensor, x: torch.Tensor):
+    # Stable L1 loss
+    return F.smooth_l1_loss(recon_x, x, reduction='mean')
