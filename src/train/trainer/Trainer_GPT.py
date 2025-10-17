@@ -60,6 +60,7 @@ class Trainer:
 
         self.model.to(self.device)
 
+
     def train_step(self):
         train_loss = 0.0
         train_true = []
@@ -67,23 +68,27 @@ class Trainer:
 
         self.model.train()
         for batch in self.train_loader:
-            y = batch["vah"].to(self.device)
-            c = batch["features"].to(self.device)
+            y = batch["vah"].to(self.device)            # [B, seq_len]
+            c = batch["features"].to(self.device)       # [B, cond_dim]
+
+            y_input = y[:, :-1]                         # вход (y_0 .. y_{T-2})
+            y_target = y[:, 1:]                         # цель (y_1 .. y_{T-1})
 
             self.optimizer.zero_grad()
-            y_hat = self.model(c)
-            loss = self.loss_fn(y_hat, y)
+            y_hat = self.model(c, y_input)              # [B, seq_len - 1]
+            loss = self.loss_fn(y_hat, y_target)
             loss.backward()
             self.optimizer.step()
 
             train_loss += loss.item() * y.size(0)
 
             if len(train_true) == 0:
-                train_true = y[0].detach().cpu().numpy()
+                train_true = y_target[0].detach().cpu().numpy()
                 train_pred = y_hat[0].detach().cpu().numpy()
 
         train_loss /= len(self.train_loader.dataset)
         return train_true, train_pred, train_loss
+
 
     def val_step(self):
         val_loss = 0.0
@@ -96,22 +101,25 @@ class Trainer:
                 y = batch["vah"].to(self.device)
                 c = batch["features"].to(self.device)
 
-                y_hat = self.model(c)
-                loss = self.loss_fn(y_hat, y)
+                y_input = y[:, :-1]
+                y_target = y[:, 1:]
+
+                y_hat = self.model(c, y_input)
+                loss = self.loss_fn(y_hat, y_target)
                 val_loss += loss.item() * y.size(0)
 
                 if torch.isnan(y_hat).any():
                     print("NaN in y_hat during validation!")
-
                 if torch.isnan(loss):
                     print("NaN in loss during validation!")
 
                 if len(val_true) == 0:
-                    val_true = y[0].detach().cpu().numpy()
+                    val_true = y_target[0].detach().cpu().numpy()
                     val_pred = y_hat[0].detach().cpu().numpy()
 
         val_loss /= len(self.val_loader.dataset)
         return val_true, val_pred, val_loss
+
 
     def train_model(self):
         train_losses = []
@@ -127,13 +135,23 @@ class Trainer:
 
             # Визуализация
             if epoch % 10 == 0 or epoch == self.epochs - 1:
+                if self.train_denorm_fn:
+                    train_true_cva=self.train_denorm_fn(train_true)
+                    train_pred_cva=self.train_denorm_fn(train_pred)
+                    val_true_cva=self.train_denorm_fn(val_true)
+                    val_pred_cva=self.train_denorm_fn(val_pred)
+                else:
+                    train_true_cva = train_true
+                    train_pred_cva = train_pred
+                    val_true_cva=val_true
+                    val_pred_cva=val_pred
                 plot_models(
                     epoch=epoch,
                     path_to_save=self.path_to_save_plots / f"epoch_{epoch:03d}.png",
-                    train_true_cva=self.train_denorm_fn(train_true),
-                    train_pred_cva=self.train_denorm_fn(train_pred),
-                    val_true_cva=self.val_denorm_fn(val_true),
-                    val_pred_cva=self.val_denorm_fn(val_pred),
+                    train_true_cva=train_true_cva,
+                    train_pred_cva=train_pred_cva,
+                    val_true_cva=val_true_cva,
+                    val_pred_cva=val_pred_cva,
                     train_loss=train_losses,
                     val_loss=val_losses
                 )
