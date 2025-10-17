@@ -66,26 +66,19 @@ class GPT_emb(nn.Module):
         """
         B = c.size(0)
 
-        # === 1. Преобразуем каждый признак в токен
         cond_tokens = self.cond_proj(c.unsqueeze(-1))  # [B, cond_dim, d_model]
 
-        # === 2. y "заглушки"
         y_tokens = self.y_emb.unsqueeze(0).expand(B, -1, -1)  # [B, seq_len, d_model]
 
-        # === 3. Объединение cond + y
         x = torch.cat([cond_tokens, y_tokens], dim=1)  # [B, cond_dim + seq_len, d_model]
 
-        # === 4. Позиционное кодирование
         x = x + self.pos_emb.unsqueeze(0)  # [B, total_len, d_model]
 
-        # === 5. Transformer + norm
         x = self.transformer(x, mask=self.causal_mask)
         x = self.norm(x)
 
-        # === 6. Убираем cond токены
         x = x[:, self.cond_dim:, :]  # [B, seq_len, d_model]
 
-        # === 7. Проекция
         out = self.output_proj(x).squeeze(-1)  # [B, seq_len]
 
         return out
@@ -106,16 +99,11 @@ class GPT(nn.Module):
         self.cond_dim = cond_dim
         self.d_model = d_model
 
-        # === 1. Проекция признаков (условий) ===
         self.cond_proj = nn.Linear(cond_dim, d_model)
-
-        # === 2. Проекция значений y_t в эмбеддинги ===
         self.y_proj = nn.Linear(1, d_model)
+        self.y_start_emb = nn.Parameter(torch.randn(1, d_model) * 0.01)
+        self.pos_emb = nn.Parameter(torch.randn(seq_len + 1, d_model) * 0.01)
 
-        # === 3. Позиционные эмбеддинги (cond + y)
-        self.pos_emb = nn.Parameter(torch.randn(seq_len, d_model) * 0.01)
-
-        # === 4. Transformer Encoder ===
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -127,49 +115,66 @@ class GPT(nn.Module):
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.norm = nn.LayerNorm(d_model)
 
-        # === 5. Выход
         self.output_proj = nn.Linear(d_model, 1)
-
-        # === 6. Каузальная маска
-        self.register_buffer("causal_mask", self._generate_causal_mask(seq_len))
+        self.register_buffer("causal_mask", self._generate_causal_mask(seq_len + 1))
 
     def _generate_causal_mask(self, T):
-        mask = torch.full((T, T), float('-inf'))
+        mask = torch.full((T, T), float('-inf'), device=self.pos_emb.device)
         mask = torch.triu(mask, diagonal=1)
         mask[:, 0] = 0  # cond доступен всем
         return mask
 
     def forward(self, c, y_input):
-        """
-        c:       [B, cond_dim]
-        y_input: [B, seq_len]  — реальные y, сдвинутые на 1 шаг (y[:, :-1])
-        """
         B = c.size(0)
-
-        # === 1. Проекция условий
         cond_token = self.cond_proj(c).unsqueeze(1)  # [B, 1, d_model]
 
-        # === 2. Эмбеддинг реальных y
-        y_input = y_input.unsqueeze(-1)              # [B, seq_len, 1]
-        y_tokens = self.y_proj(y_input)              # [B, seq_len, d_model]
+        y_input_expanded = y_input.unsqueeze(-1)        # [B, seq_len, 1]
+        y_tokens = self.y_proj(y_input_expanded)        # [B, seq_len, d_model]
 
-        # === 3. Собираем вход: [COND, y_0, y_1, ..., y_T-1]
+        y_start_emb_expanded = self.y_start_emb.unsqueeze(0).expand(B, -1, -1)  # [B, 1, d_model]
+
+        # Вставляем y_start_emb как первый токен, а y_tokens сдвигаем вправо
+        y_tokens = torch.cat([y_start_emb_expanded, y_tokens[:, :-1, :]], dim=1)  # [B, seq_len, d_model]
+
         x = torch.cat([cond_token, y_tokens], dim=1)  # [B, seq_len+1, d_model]
 
-        # === 4. Добавляем позиционные эмбеддинги
-        x = x + self.pos_emb.unsqueeze(0)  # [B, seq_len+1, d_model]
+        pos_emb = self.pos_emb[:x.size(1), :]         # [seq_len+1, d_model]
+        x = x + pos_emb.unsqueeze(0)                   # [B, seq_len+1, d_model]
 
-        # === 5. Transformer + нормализация
-        x = self.transformer(x, mask=self.causal_mask)
+        causal_mask = self._generate_causal_mask(x.size(1))  # [seq_len+1, seq_len+1]
+
+        x = self.transformer(x, mask=causal_mask)
         x = self.norm(x)
 
-        # === 6. Отбрасываем cond токен
-        x = x[:, 1:, :]  # [B, seq_len, d_model]
+        x = x[:, 1:, :]  # Отбросили cond токен
 
-        # === 7. Проекция в скаляр
         out = self.output_proj(x).squeeze(-1)  # [B, seq_len]
 
         return out
+    
+    @torch.no_grad()
+    def generate(self, c, max_len=None):
+        self.eval()
+        device = c.device
+        batch_size = c.size(0)
+        max_len = max_len or self.seq_len
+
+        y_input = torch.zeros(batch_size, 0, device=device)
+
+        generated_tokens = []
+
+        for _ in range(max_len):
+            y_hat = self(c, y_input)  # [B, seq_len_current]
+
+            next_token = y_hat[:, -1].unsqueeze(1)  # [B, 1]
+
+            y_input = torch.cat([y_input, next_token], dim=1)
+
+            generated_tokens.append(next_token)
+
+        generated_seq = torch.cat(generated_tokens, dim=1)
+
+        return generated_seq
 
 
 def vae_loss(recon_x: torch.Tensor, x: torch.Tensor):
