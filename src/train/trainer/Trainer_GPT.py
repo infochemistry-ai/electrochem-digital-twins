@@ -68,14 +68,17 @@ class Trainer:
 
         self.model.train()
         for batch in self.train_loader:
-            y = batch["vah"].to(self.device)            # [B, seq_len]
-            c = batch["features"].to(self.device)       # [B, cond_dim]
+            y = batch["vah"].to(self.device)                # [B, seq_len]
+            c = batch["features"].to(self.device)           # [B, cond_dim]
 
-            y_input = y[:, :-1]                         # вход (y_0 .. y_{T-2})
-            y_target = y[:, 1:]                         # цель (y_1 .. y_{T-1})
+            y_input = y[:, :-1]
+            if random.random() < 0.5:     # 50% батчей — с шумом
+                noise = torch.randn_like(y_input) * 0.05    # настройте scale!
+                y_input = y_input + noise                   # вход (y_0 .. y_{T-2})
+            y_target = y[:, 1:]                             # цель (y_1 .. y_{T-1})
 
             self.optimizer.zero_grad()
-            y_hat = self.model(c, y_input)              # [B, seq_len - 1]
+            y_hat = self.model(c, y_input)                  # [B, seq_len - 1]
             loss = self.loss_fn(y_hat, y_target)
             loss.backward()
             self.optimizer.step()
