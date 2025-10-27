@@ -127,7 +127,7 @@ class Trainer:
     def train_model(self):
         train_losses = []
         val_losses = []
-        best_val_loss = float("inf")
+        self.best_val_loss = float("inf")
 
         for epoch in range(self.epochs):
             train_true, train_pred, train_loss = self.train_step()
@@ -159,8 +159,8 @@ class Trainer:
                     val_loss=val_losses
                 )
 
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            if val_loss < self.best_val_loss:
+                self.best_val_loss = val_loss
                 torch.save(self.model.state_dict(), self.path_to_save_models / "best_model.pt")
 
             print(f"Epoch {epoch:03d} — Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}, LR: {self.scheduler.get_last_lr()}")
