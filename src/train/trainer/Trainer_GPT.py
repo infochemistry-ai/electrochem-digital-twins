@@ -163,7 +163,7 @@ class Trainer:
                 best_val_loss = val_loss
                 torch.save(self.model.state_dict(), self.path_to_save_models / "best_model.pt")
 
-            print(f"Epoch {epoch:03d} — Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}")
+            print(f"Epoch {epoch:03d} — Train Loss: {train_loss:.6f}, Val Loss: {val_loss:.6f}, LR: {self.scheduler.get_last_lr()}")
 
             if self.scheduler:
                 if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
