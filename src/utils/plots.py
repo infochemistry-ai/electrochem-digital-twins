@@ -102,6 +102,14 @@ def plot_models(
     axs[1, 0].set_xlabel("Epochs")
     axs[1, 0].legend()
 
+    if epoch > 10:
+        axs[1, 1].plot(train_loss[10:], label="Train loss")
+        axs[1, 1].plot(val_loss[10:], label="Test loss")
+        axs[1, 1].set_ylabel("EBLOSS Loss")
+        axs[1, 1].set_xlabel("Epochs")
+        axs[1, 1].set_xlim(10, epoch)
+        axs[1, 1].legend()
+
     plt.tight_layout()
     plt.savefig(path_to_save)
     plt.close(fig)

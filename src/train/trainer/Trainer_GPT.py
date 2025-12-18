@@ -33,8 +33,6 @@ class Trainer:
         path_to_save_models,
         path_to_save_tables,
         scheduler=None,
-        train_denorm_fn=None,
-        val_denorm_fn=None,
         seed=42
     ):
         self.model = model
@@ -50,8 +48,6 @@ class Trainer:
         self.path_to_save_models = Path(path_to_save_models)
         self.path_to_save_tables = Path(path_to_save_tables)
 
-        self.train_denorm_fn = train_denorm_fn
-        self.val_denorm_fn = val_denorm_fn
 
         set_seed(seed=seed)
         self.path_to_save_plots.mkdir(parents=True, exist_ok=True)
@@ -61,25 +57,35 @@ class Trainer:
         self.model.to(self.device)
 
 
-    def train_step(self):
+    def train_step(self, epoch, max_epochs):
         train_loss = 0.0
         train_true = []
         train_pred = []
 
         self.model.train()
+        
+        p_tf = 1 - epoch / max_epochs
+        
         for batch in self.train_loader:
-            y = batch["vah"].to(self.device)                # [B, seq_len]
-            c = batch["features"].to(self.device)           # [B, cond_dim]
+            y = batch["vah"].to(self.device)        # [B, seq_len]
+            c_chem = batch["features"].to(self.device)
+            c_conc = batch["conc"].to(self.device)
 
-            y_input = y[:, :-1]
-            if random.random() < 0.5:     # 50% батчей — с шумом
-                noise = torch.randn_like(y_input) * 0.05    # настройте scale!
-                y_input = y_input + noise                   # вход (y_0 .. y_{T-2})
-            y_target = y[:, 1:]                             # цель (y_1 .. y_{T-1})
+            B, T_full = y.shape
+            y_input = y[:, :-1]                     # [B, T-1]
+            y_target = y[:, 1:]                     # [B, T-1]
+
+            use_model = (torch.rand_like(y_input) >= p_tf) 
 
             self.optimizer.zero_grad()
-            y_hat = self.model(c, y_input)                  # [B, seq_len - 1]
-            loss = self.loss_fn(y_hat, y_target)
+            y_hat_init = self.model(c_chem, c_conc, y_input)
+
+            y_hat_shifted = torch.cat([y_hat_init[:, :1], y_hat_init[:, :-1]], dim=1)
+
+            y_input_tf = torch.where(use_model, y_hat_shifted.detach(), y_input)
+
+            y_hat_final = self.model(c_chem, c_conc, y_input_tf)
+            loss = self.loss_fn(y_hat_final, y_target)
             loss.backward()
             self.optimizer.step()
 
@@ -87,7 +93,7 @@ class Trainer:
 
             if len(train_true) == 0:
                 train_true = y_target[0].detach().cpu().numpy()
-                train_pred = y_hat[0].detach().cpu().numpy()
+                train_pred = y_hat_final[0].detach().cpu().numpy()
 
         train_loss /= len(self.train_loader.dataset)
         return train_true, train_pred, train_loss
@@ -101,27 +107,29 @@ class Trainer:
         self.model.eval()
         with torch.no_grad():
             for batch in self.val_loader:
-                y = batch["vah"].to(self.device)
-                c = batch["features"].to(self.device)
+                y = batch["vah"].to(self.device)         # [B, seq_len]
+                c_chem = batch["features"].to(self.device)
+                c_conc = batch["conc"].to(self.device)
 
-                y_input = y[:, :-1]
-                y_target = y[:, 1:]
+                B, T_full = y.shape
+                y_target = y[:, 1:]                      # [B, T-1]
 
-                y_hat = self.model(c, y_input)
-                loss = self.loss_fn(y_hat, y_target)
-                val_loss += loss.item() * y.size(0)
+                # --- Autoregressive generation using model.generate() ---
+                y_gen = self.model.generate(c_chem, c_conc, max_len=T_full - 1)  # [B, T-1]
 
-                if torch.isnan(y_hat).any():
-                    print("NaN in y_hat during validation!")
-                if torch.isnan(loss):
-                    print("NaN in loss during validation!")
+                # --- Compute loss against ground truth ---
+                loss = self.loss_fn(y_gen, y_target)
+                val_loss += loss.item() * B
 
+                # --- pick a random sequence for visualization ---
                 if len(val_true) == 0:
-                    val_true = y_target[0].detach().cpu().numpy()
-                    val_pred = y_hat[0].detach().cpu().numpy()
+                    idx = random.randint(0, B - 1)
+                    val_true = y_target[idx].detach().cpu().numpy()
+                    val_pred = y_gen[idx].detach().cpu().numpy()
 
         val_loss /= len(self.val_loader.dataset)
         return val_true, val_pred, val_loss
+
 
 
     def train_model(self):
@@ -130,7 +138,7 @@ class Trainer:
         self.best_val_loss = float("inf")
 
         for epoch in range(self.epochs):
-            train_true, train_pred, train_loss = self.train_step()
+            train_true, train_pred, train_loss = self.train_step(epoch=epoch, max_epochs=self.epochs)
             val_true, val_pred, val_loss = self.val_step()
 
             train_losses.append(train_loss)
@@ -138,16 +146,11 @@ class Trainer:
 
             # Визуализация
             if epoch % 10 == 0 or epoch == self.epochs - 1:
-                if self.train_denorm_fn:
-                    train_true_cva=self.train_denorm_fn(train_true)
-                    train_pred_cva=self.train_denorm_fn(train_pred)
-                    val_true_cva=self.train_denorm_fn(val_true)
-                    val_pred_cva=self.train_denorm_fn(val_pred)
-                else:
-                    train_true_cva = train_true
-                    train_pred_cva = train_pred
-                    val_true_cva=val_true
-                    val_pred_cva=val_pred
+
+                train_true_cva = train_true
+                train_pred_cva = train_pred
+                val_true_cva=val_true
+                val_pred_cva=val_pred
                 plot_models(
                     epoch=epoch,
                     path_to_save=self.path_to_save_plots / f"epoch_{epoch:03d}.png",

@@ -11,7 +11,9 @@ descriptors_name = ['MolWt', 'MolLogP', 'NumRotatableBonds', 'TPSA',
        'AmineGroup', 'G Eh', 'HOMO eV', 'LUMO eV', 'μ D',
        'Final entropy term Eh', 'Total enthalpy Eh', 'Electronic entropy Eh',
        'Vibrational entropy Eh', 'Rotational entropy Eh',
-       'Translational entropy Eh', 'ppm']
+       'Translational entropy Eh']
+
+conc_name = ['ppm']
 
 
 class CVADataset(Dataset):
@@ -49,3 +51,27 @@ class CVADataset(Dataset):
     def denormalize(self, tensor):
         """Позволяет денормализовать выход модели (напр., для графиков)"""
         return tensor * self.std + self.mean
+    
+
+class GPTDataset(Dataset):
+    def __init__(self, current):
+        if "Inhibitor" in current.columns:
+            current = current.drop(columns=["Inhibitor"])
+
+        self.vah = current.iloc[:, :968].astype("float32").values
+        self.desc = current[descriptors_name].astype("float32").values
+        self.conc = current[conc_name].astype("float32").values
+
+        self.vahh = torch.tensor(self.vah, dtype=torch.float32)
+        self.descc = torch.tensor(self.desc, dtype=torch.float32)
+        self.concc = torch.tensor(self.conc, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self.vahh)
+
+    def __getitem__(self, idx):
+        return {
+            "vah": self.vahh[idx],
+            "features": self.descc[idx],
+            "conc": self.concc[idx]
+        }
